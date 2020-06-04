@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Data;
 using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Newtonsoft.Json;
 
 namespace GameOfLife
 {
@@ -10,6 +13,7 @@ namespace GameOfLife
         private static readonly Random random = new Random();
         private static readonly object syncLock = new object();
         private readonly int[] totalGridVisualTime = { 2000, 3000, 8000 };
+        private List<String> TrialMemory;
         private Cell[,] managerStage;
         private BuildInfo bi;
         public FrmBuild(BuildInfo _bi)
@@ -26,6 +30,7 @@ namespace GameOfLife
         {
             Manager m;
             if (bi.RandomBuild) { m = new Manager(CreateRandomGrid()); } else { m = new Manager(CreateSetGrid()); };
+            TrialMemory = new List<string>();
             
             for (int i = 1; i <= iterations; i++)
             {
@@ -36,7 +41,12 @@ namespace GameOfLife
                 managerStage = m.setGrid;
                 await Task.Delay(gridTimelapse(iterations));
                 pictureBox1.Invalidate();
+                commitToMemory(m.setGrid);
             }
+
+            // update controls
+            updateModelNumber(TrialMemory.Count - 1);
+            txt_model.Enabled = true;
         }
         public Cell[,] CreateSetGrid()
         {
@@ -115,10 +125,51 @@ namespace GameOfLife
         }
         private void autoCellSize(int cellCount, ref int cellSize, int formSize)
         {
-            while (cellCount * cellSize > formSize * .9)
+            while (cellCount * cellSize > formSize * .85)
             {
                 cellSize--;
             }
+        }
+        private void commitToMemory(Cell[,] inputGrid)
+        {
+            CellGrid cg = new CellGrid();
+            cg.SizeX = inputGrid.GetLength(1);
+            cg.SizeY = inputGrid.GetLength(0);
+            cg.AliveCells = new List<int[]>();
+            for (int y = 0; y < cg.SizeY; y++)
+            {
+                for (int x = 0; x < cg.SizeX; x++)
+                {
+                    if (managerStage[y, x].CurrentState)
+                    {
+                        cg.AliveCells.Add(new int[2] {y,x});
+                    }
+                }
+            }
+            string json = JsonConvert.SerializeObject(cg);
+            TrialMemory.Add(json);
+        }
+        private void drawGrid(string json) 
+        {
+            CellGrid cg = JsonConvert.DeserializeObject<CellGrid>(json);
+            managerStage = new Cell[cg.SizeY,cg.SizeX];
+
+            foreach (int[] cell in cg.AliveCells)
+            {
+                managerStage[cell[0], cell[1]] = new Cell(true);
+            }
+
+            for (int y=0; y < cg.SizeY; y++)
+            {
+                for (int x=0; x< cg.SizeX; x++)
+                {
+                    if (managerStage[y,x] == null)
+                    {
+                        managerStage[y, x] = new Cell(false);
+                    }
+                }
+            }
+            pictureBox1.Invalidate();
         }
         private int gridTimelapse(int iterations)
         {
@@ -153,7 +204,58 @@ namespace GameOfLife
                 return random.Next(minValue, maxValue);
             }
         }
-
+        private void updateModelNumber(int i)
+        {
+            txt_model.Text = i.ToString();
+        }
+        private void btn_first_Click(object sender, EventArgs e)
+        {
+            drawGrid(TrialMemory[0]);
+            updateModelNumber(0);
+        }
+        private void btn_previous_Click(object sender, EventArgs e)
+        {
+            if (int.TryParse(txt_model.Text, out int model))
+            {
+                if (model != 0)
+                {
+                    drawGrid(TrialMemory[model - 1]);
+                    updateModelNumber(model - 1);
+                }
+            }
+        }
+        private void btn_next_Click(object sender, EventArgs e)
+        {
+            if (int.TryParse(txt_model.Text, out int model))
+            {
+                if (model != TrialMemory.Count -1)
+                {
+                    drawGrid(TrialMemory[model + 1]);
+                    updateModelNumber(model + 1);
+                }
+            }
+        }
+        private void btn_last_Click(object sender, EventArgs e)
+        {
+            drawGrid(TrialMemory[TrialMemory.Count-1]);
+            updateModelNumber(TrialMemory.Count - 1);
+        }
+        private void txt_model_KeyDown(object sender, KeyEventArgs e)
+        {
+            if(e.KeyCode == Keys.Enter)
+            {
+                if (int.TryParse(txt_model.Text, out int model))
+                {
+                    if (model >= 0 && model < TrialMemory.Count)
+                    {
+                        drawGrid(TrialMemory[model]);
+                    } else
+                    {
+                        drawGrid(TrialMemory[TrialMemory.Count - 1]);
+                    }
+                }
+            }
+        }
     }
 }
 
